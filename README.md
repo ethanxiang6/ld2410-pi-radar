@@ -89,6 +89,15 @@ Put the Pi's SD card in your PC (Windows or Linux) and open its boot partition:
 On the next boot the Pi installs everything, removes that line again, and reboots.
 It writes a log to `radar-firstboot.log` on the boot partition.
 
+### Show it on a monitor on the Pi (optional)
+
+With Raspberry Pi OS (desktop, auto-login) and a screen on the Pi's HDMI port, run this on the Pi
+as your normal user (not sudo). It opens the radar full-screen in Chromium at every boot:
+
+```bash
+bash ld2410-radar/setup-kiosk.sh            # undo with --remove
+```
+
 ### Power and cables
 
 Plug into a **USB-C port on the PC** if you can (1.5–3 A); a USB-A port (0.5–0.9 A) may

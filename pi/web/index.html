@@ -12,7 +12,7 @@
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--mono); }
-  body { display: flex; flex-direction: column; min-height: 100vh; }
+  body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
   header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   header h1 { margin: 0; font-size: 14px; letter-spacing: .22em; color: var(--phos); font-weight: 600; }
   .pill { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--dim); }
@@ -36,11 +36,12 @@
   .seg button { border: 0; border-radius: 0; background: transparent; }
   .seg button.on { background: var(--grid); color: var(--text); }
 
-  main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 16px; }
-  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 16px; }
+  main > aside, main > .side { min-height: 0; overflow-y: auto; }
+  @media (max-width: 900px) { body { height: auto; min-height: 100vh; overflow: auto; } main { grid-template-columns: minmax(0, 1fr); } #radar { height: 60vh !important; } }
   .scope { position: relative; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px;
-           background: radial-gradient(ellipse at 50% 100%, #072417 0%, var(--bg) 70%); min-height: 380px; overflow: hidden; }
-  #radar { flex: 1; width: 100%; min-height: 340px; display: block; }
+           background: radial-gradient(ellipse at 50% 100%, #072417 0%, var(--bg) 70%); overflow: hidden; min-height: 0; }
+  #radar { flex: 1 1 0; min-height: 0; width: 100%; height: 0; display: block; }
   .scope-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 8px 14px; font-size: 11px; color: var(--dim); border-top: 1px solid var(--line); }
   .legend { display: flex; gap: 14px; flex-wrap: wrap; }
   .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
@@ -395,7 +396,7 @@ function resize() {
   cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   R = Math.max(50, Math.min(H - 56, (W / 2 - 30) / Math.sin(FOV)));
-  ox = W / 2; oy = Math.min(H - 26, (H + R) / 2 + 12);   // centre the fan vertically when width-bound
+  ox = W / 2; oy = Math.min(H - 26, R + 30);   // top-aligned: fan hugs the top of the scope
 }
 new ResizeObserver(resize).observe(cv);
 
