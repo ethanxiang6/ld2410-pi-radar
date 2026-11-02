@@ -1,0 +1,4 @@
+# These files run on the Raspberry Pi; CRLF line endings break bash and the shebang.
+*.sh  text eol=lf
+*.py  text eol=lf
+*.html text eol=lf

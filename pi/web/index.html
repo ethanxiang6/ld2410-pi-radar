@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LD2410C Radar</title>
+<style>
+  :root {
+    --bg: #030a07; --panel: #06130d; --line: #12342a; --grid: #1d6a45; --phos: #3dff8a;
+    --dim: #5f8f76; --text: #c9f5dc; --mov: #ffb347; --sta: #4fd8ff; --bad: #ff5c5c; --person: #b6ffd2;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--mono); }
+  body { display: flex; flex-direction: column; min-height: 100vh; }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 14px; letter-spacing: .22em; color: var(--phos); font-weight: 600; }
+  .pill { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--dim); }
+  .pill .led { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+  .pill.ok .led { background: var(--phos); box-shadow: 0 0 8px var(--phos); }
+  .pill.bad .led { background: var(--bad); box-shadow: 0 0 8px var(--bad); }
+  .pill.bad { color: var(--bad); }
+  .spacer { flex: 1; }
+  .controls { display: flex; gap: 12px; align-items: center; font-size: 12px; color: var(--dim); flex-wrap: wrap; }
+  select, input[type=number] { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; font: inherit; padding: 3px 6px; }
+  input[type=number] { width: 64px; }
+  .controls label { display: inline-flex; gap: 5px; align-items: center; cursor: pointer; }
+  input[type=checkbox] { accent-color: var(--phos); }
+  button { font: inherit; font-size: 12px; color: var(--text); background: #0b2318; border: 1px solid var(--grid); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--phos); color: var(--phos); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--phos); color: #03140a; border-color: var(--phos); font-weight: 700; }
+  button.primary:hover:not(:disabled) { color: #03140a; filter: brightness(1.1); }
+  button.danger { border-color: #5a2323; color: #ff9b9b; background: transparent; }
+  .seg { display: inline-flex; border: 1px solid var(--grid); border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; background: transparent; }
+  .seg button.on { background: var(--grid); color: var(--text); }
+
+  main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 16px; }
+  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+  .scope { position: relative; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px;
+           background: radial-gradient(ellipse at 50% 100%, #072417 0%, var(--bg) 70%); min-height: 380px; overflow: hidden; }
+  #radar { flex: 1; width: 100%; min-height: 340px; display: block; }
+  .scope-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 8px 14px; font-size: 11px; color: var(--dim); border-top: 1px solid var(--line); }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  #overlay { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+             background: rgba(3, 10, 7, .82); text-align: center; padding: 16px; }
+  #overlay.show { display: flex; }
+  #overlay .big { font-size: 64px; font-weight: 700; color: var(--phos); text-shadow: 0 0 24px rgba(61, 255, 138, .5); font-variant-numeric: tabular-nums; }
+  #overlay .msg { font-size: 15px; letter-spacing: .08em; }
+  #overlay .sub { font-size: 12px; color: var(--dim); max-width: 420px; line-height: 1.5; }
+
+  aside { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .card h2 { margin: 0 0 10px; font-size: 11px; font-weight: 500; letter-spacing: .18em; color: var(--dim); }
+  #presence { font-size: 26px; font-weight: 700; letter-spacing: .06em; color: var(--dim); }
+  #presence.on { color: var(--phos); text-shadow: 0 0 14px rgba(61, 255, 138, .45); }
+  #presence-sub { font-size: 12px; color: var(--dim); margin-top: 2px; }
+  .targets { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .t { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; opacity: .45; transition: opacity .2s; }
+  .t.on { opacity: 1; }
+  .t.weak { opacity: .7; border-style: dashed; }
+  .t .k { font-size: 10px; letter-spacing: .14em; }
+  .t .d { font-size: 22px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .t .e { font-size: 11px; color: var(--dim); }
+  .t.m .k, .t.m .d { color: var(--mov); }
+  .t.s .k, .t.s .d { color: var(--sta); }
+  .gates { display: grid; gap: 4px; height: 120px; align-items: end;
+           background: repeating-linear-gradient(to top, transparent 0 23px, var(--line) 23px 24px); }
+  .gate { display: flex; gap: 2px; height: 100%; }
+  .bar { flex: 1; position: relative; height: 100%; }
+  .bar i { position: absolute; left: 0; right: 0; bottom: 0; min-height: 1px; border-radius: 2px 2px 0 0; background: var(--mov); transition: height .15s; }
+  .bar.s i { background: var(--sta); }
+  .bar b { position: absolute; left: -1px; right: -1px; height: 2px; background: #fff; opacity: .85; box-shadow: 0 0 3px #000; }
+  .bar b.off { display: none; }
+  .glabels { display: grid; gap: 4px; margin-top: 4px; font-size: 10px; color: var(--dim); text-align: center; }
+  .note { font-size: 11px; color: var(--dim); margin-top: 8px; line-height: 1.45; }
+  #spark { width: 100%; height: 90px; display: block; }
+  .kv { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; font-size: 12px; align-items: center; }
+  .kv > span:nth-child(odd) { color: var(--dim); }
+  .kv > span:nth-child(even) { text-align: right; font-variant-numeric: tabular-nums; }
+  .row { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+  #err { color: var(--bad); font-size: 12px; margin-top: 8px; word-break: break-word; }
+  #err:empty, #calib-msg:empty { display: none; }
+  #calib-msg { font-size: 11px; color: var(--dim); margin-top: 8px; line-height: 1.45; }
+  #toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); max-width: calc(100% - 32px); background: #2a0d0d;
+           border: 1px solid var(--bad); color: #ffd0d0; padding: 10px 14px; border-radius: 8px; font-size: 13px; display: none; z-index: 10; }
+  #toast.ok { background: #0b2318; border-color: var(--phos); color: var(--text); }
+</style>
+</head>
+<body>
+<header>
+  <h1>LD2410C&nbsp;RADAR</h1>
+  <span id="conn" class="pill"><span class="led"></span><span id="conn-text">connecting…</span></span>
+  <span class="spacer"></span>
+  <div class="controls">
+    <label>Range
+      <select id="range">
+        <option value="auto" selected>auto</option>
+        <option value="1">1 m</option>
+        <option value="2">2 m</option>
+        <option value="3">3 m</option>
+        <option value="4.5">4.5 m</option>
+        <option value="6">6 m</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="heat" checked> gate energy</label>
+    <label title="The sensor's own moving / stationary readings, before tracking"><input type="checkbox" id="raw"> raw readings</label>
+    <label><input type="checkbox" id="sweep" checked> sweep</label>
+  </div>
+</header>
+
+<main>
+  <section class="scope">
+    <canvas id="radar"></canvas>
+    <div id="overlay"><div class="msg" id="ov-msg"></div><div class="big" id="ov-big"></div><div class="sub" id="ov-sub"></div></div>
+    <div class="scope-foot">
+      <div class="legend">
+        <span><span class="sw" style="background:var(--person)"></span>person (tracked)</span>
+        <span><span class="sw" style="background:var(--mov)"></span>raw moving</span>
+        <span><span class="sw" style="background:var(--sta)"></span>raw stationary</span>
+        <span><span class="sw" style="background:transparent;border:1px dashed var(--dim)"></span>coasting / weak</span>
+      </div>
+      <span>Range only, no bearing: each arc is everyone-at-that-distance across the ±60° field of view.</span>
+    </div>
+  </section>
+
+  <aside>
+    <div class="card">
+      <h2>PRESENCE</h2>
+      <div id="presence">—</div>
+      <div id="presence-sub">waiting for data</div>
+      <div id="err"></div>
+    </div>
+
+    <div class="card">
+      <h2>TARGETS</h2>
+      <div class="targets">
+        <div class="t m" id="t-mov"><div class="k">MOVING</div><div class="d">—</div><div class="e">energy —</div></div>
+        <div class="t s" id="t-sta"><div class="k">STATIONARY</div><div class="d">—</div><div class="e">energy —</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>ENERGY PER GATE</h2>
+      <div class="gates" id="gates"></div>
+      <div class="glabels" id="glabels"></div>
+      <div class="note" id="gate-note">White ticks are the trigger thresholds: a bar above its tick counts as a detection.</div>
+    </div>
+
+    <div class="card">
+      <h2>TUNING</h2>
+      <div class="kv">
+        <span>gate size</span>
+        <span class="seg" id="res-seg"><button data-fine="0">0.75 m room</button><button data-fine="1">0.2 m desk</button></span>
+        <span>hold presence for</span>
+        <span class="row"><input type="number" id="hold" min="0" max="600"> s <button id="hold-set">Set</button></span>
+      </div>
+      <div class="row" style="justify-content:space-between;margin-top:12px">
+        <button class="primary" id="calib">Calibrate empty room</button>
+        <button class="danger" id="reset">Factory reset</button>
+      </div>
+      <div id="calib-msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>DISTANCE · LAST 60 s</h2>
+      <canvas id="spark"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>SENSOR</h2>
+      <div class="kv">
+        <span>source</span><span id="src">—</span>
+        <span>firmware</span><span id="fw">—</span>
+        <span>mode</span><span id="mode">—</span>
+        <span>OUT pin</span><span id="out">—</span>
+        <span>light</span><span id="light">—</span>
+        <span>frames/s</span><span id="fps">—</span>
+      </div>
+    </div>
+  </aside>
+</main>
+<div id="toast"></div>
+
+<script>
+const FOV = 60 * Math.PI / 180;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const C = { grid: css('--grid'), phos: css('--phos'), dim: css('--dim'), mov: css('--mov'), sta: css('--sta'), bg: css('--bg'), person: css('--person') };
+const MONO = css('--mono');
+const $ = id => document.getElementById(id);
+
+const opts = { range: 'auto', heat: true, raw: false, sweep: true };
+try { Object.assign(opts, JSON.parse(localStorage.getItem('radar-opts') || '{}')); } catch {}
+$('range').value = String(opts.range);
+for (const k of ['heat', 'raw', 'sweep']) {
+  $(k).checked = opts[k];
+  $(k).onchange = e => { opts[k] = e.target.checked; saveOpts(); };
+}
+const saveOpts = () => { try { localStorage.setItem('radar-opts', JSON.stringify(opts)); } catch {} };
+$('range').onchange = e => { opts.range = e.target.value; saveOpts(); };
+
+// ---------- live state ----------
+let frame = null, est = null, cfg = {}, calib = { phase: 'idle' }, frameTime = 0, status = {};
+let lastFrameAt = 0, frameCount = 0;
+const gateM = () => cfg.gate_m || 0.75;
+const nGates = () => (cfg.max_gate ?? 8) + 1;
+const fullRange = () => nGates() * gateM();
+const range = () => opts.range === 'auto' ? fullRange() : +opts.range;
+const history = [];  // {t, d} tracked person distance in metres
+setInterval(() => { $('fps').textContent = frameCount; frameCount = 0; }, 1000);
+
+function connect() {
+  const es = new EventSource('/events');
+  es.onmessage = ev => {
+    const snap = JSON.parse(ev.data);
+    status = snap.status || {};
+    cfg = snap.config || {};
+    calib = snap.calib || { phase: 'idle' };
+    // keep-alive and status-only messages repeat the last frame; only count new ones
+    if (snap.frame && snap.frame_time !== frameTime && snap.age < 2) {
+      frame = snap.frame; est = snap.estimate; frameTime = snap.frame_time; lastFrameAt = performance.now(); frameCount++;
+      onFrame();
+    }
+    renderStatus(); renderConfig(); renderCalib();
+  };
+  es.onerror = () => { status = { connected: false, error: 'Lost connection to the Pi — retrying…' }; renderStatus(); };
+}
+
+function renderStatus() {
+  const stale = performance.now() - lastFrameAt > 2000;
+  const ok = status.connected && !stale;
+  $('conn').className = 'pill ' + (ok ? 'ok' : 'bad');
+  $('conn-text').textContent = ok ? 'live' : (status.connected ? 'stale' : 'no sensor');
+  $('src').textContent = status.source || '—';
+  $('err').textContent = ok ? '' : (status.error || (stale ? 'No recent frames' : ''));
+}
+
+// ---------- gate bars with threshold ticks ----------
+let gateEls = [], gateKey = '';
+function buildGates() {
+  const n = nGates(), g = gateM(), key = n + '/' + g;
+  if (key === gateKey) return;
+  gateKey = key; gateEls = [];
+  const cols = `repeat(${n}, 1fr)`;
+  $('gates').style.gridTemplateColumns = $('glabels').style.gridTemplateColumns = cols;
+  $('gates').replaceChildren(); $('glabels').replaceChildren();
+  for (let i = 0; i < n; i++) {
+    const col = document.createElement('div'); col.className = 'gate';
+    const parts = ['m', 's'].map(k => {
+      const bar = document.createElement('div'); bar.className = 'bar' + (k === 's' ? ' s' : '');
+      const fill = document.createElement('i'), tick = document.createElement('b');
+      bar.append(fill, tick); col.append(bar);
+      return { fill, tick };
+    });
+    $('gates').append(col); gateEls.push(parts);
+    const l = document.createElement('span');
+    l.textContent = String(+(i * g).toFixed(2)).replace(/^0\./, '.');
+    $('glabels').append(l);
+  }
+}
+
+function renderGates() {
+  buildGates();
+  const eng = !!(frame && frame.gates_moving);
+  gateEls.forEach(([m, s], i) => {
+    m.fill.style.height = (eng ? frame.gates_moving[i] ?? 0 : 0) + '%';
+    s.fill.style.height = (eng ? frame.gates_static[i] ?? 0 : 0) + '%';
+    const tm = cfg.move_thresh?.[i], ts = cfg.static_thresh?.[i];
+    m.tick.className = tm == null ? 'off' : ''; m.tick.style.bottom = `calc(${tm}% - 1px)`;
+    // gates 0-1 have no stationary detection
+    s.tick.className = ts == null || i < 2 ? 'off' : ''; s.tick.style.bottom = `calc(${ts}% - 1px)`;
+  });
+  $('gate-note').textContent = eng
+    ? `Each gate is ${gateM()} m, labelled at its centre. White ticks are trigger thresholds; a bar above its tick is a detection.`
+    : 'Sensor is in basic mode — per-gate energy needs engineering mode (start the server without --basic).';
+}
+
+const fmtM = m => m.toFixed(2) + ' m';
+
+// what the tracked person is doing, from its velocity (m/s) and what the last measurement was
+function motionOf(p) {
+  if (!p) return '';
+  if (p.velocity > 0.15) return 'moving away';
+  if (p.velocity < -0.15) return 'coming closer';
+  return p.source === 'moving' || p.source === 'gates' ? 'moving' : 'still';
+}
+const arrowOf = p => !p ? '' : p.velocity > 0.15 ? ' ↑' : p.velocity < -0.15 ? ' ↓' : '';
+
+function onFrame() {
+  const f = frame, t = performance.now(), person = est?.person;
+  history.push({ t, d: person ? person.distance_m : null });
+  while (history.length && t - history[0].t > 60000) history.shift();
+
+  const pres = $('presence');
+  pres.className = person ? 'on' : '';
+  pres.textContent = person ? 'PERSON' : 'NO ONE';
+  $('presence-sub').textContent = person
+    ? `${fmtM(person.distance_m)} away · ${motionOf(person)}` + (person.confident ? '' : ' (estimated)')
+    : 'room is clear';
+
+  for (const [key, el] of [['moving', 't-mov'], ['stationary', 't-sta']]) {
+    const tg = est?.[key], box = $(el);
+    box.className = 't ' + (key === 'moving' ? 'm' : 's') + (tg ? (tg.confident ? ' on' : ' weak') : '');
+    box.querySelector('.d').textContent = tg ? fmtM(tg.distance_m) : '—';
+    box.querySelector('.e').textContent = tg ? `energy ${tg.energy}` + (tg.threshold != null ? ` / needs ${tg.threshold}` : '') + (tg.confident ? '' : ' · weak') : 'energy —';
+  }
+  renderGates();
+  $('mode').textContent = f.mode;
+  $('out').textContent = f.out === null ? '—' : (f.out ? 'HIGH' : 'LOW');
+  $('light').textContent = f.light ?? '—';
+}
+
+// ---------- tuning ----------
+let holdDirty = false;
+$('hold').oninput = () => { holdDirty = true; };
+function renderConfig() {
+  $('fw').textContent = cfg.firmware || '—';
+  const fine = cfg.gate_m === 0.2;
+  for (const b of $('res-seg').children) {
+    b.classList.toggle('on', (b.dataset.fine === '1') === fine);
+    b.disabled = busy || (!cfg.resolution_supported && b.dataset.fine === '1' && !fine);
+    b.title = cfg.resolution_supported ? '' : 'Needs LD2410C firmware 2.44 or newer';
+  }
+  if (!holdDirty && cfg.hold_s != null && document.activeElement !== $('hold')) $('hold').value = cfg.hold_s;
+  const running = ['countdown', 'recording', 'writing'].includes(calib.phase);
+  $('calib').disabled = $('reset').disabled = $('hold-set').disabled = busy || running;
+  buildGates();
+}
+
+let busy = false;
+async function post(path, body, okMsg) {
+  busy = true; renderConfig();
+  try {
+    const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || r.statusText);
+    if (okMsg) toast(okMsg, true);
+    return true;
+  } catch (e) { toast(e.message); return false; }
+  finally { busy = false; renderConfig(); }
+}
+let toastTimer;
+function toast(msg, ok) {
+  const t = $('toast'); t.textContent = msg; t.className = ok ? 'ok' : ''; t.style.display = 'block';
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.style.display = 'none'; }, 5000);
+}
+
+for (const b of $('res-seg').children) {
+  b.onclick = () => {
+    const fine = b.dataset.fine === '1';
+    if ((cfg.gate_m === 0.2) === fine) return;
+    if (opts.range !== 'auto') { opts.range = 'auto'; $('range').value = 'auto'; saveOpts(); }
+    post('/api/resolution', { fine }, fine ? 'Desk mode: 0.2 m gates, about 1.8 m range. Re-run calibration.' : 'Room mode: 0.75 m gates. Re-run calibration.');
+  };
+}
+$('hold-set').onclick = async () => {
+  if (await post('/api/hold', { seconds: +$('hold').value }, `Presence now holds for ${$('hold').value} s after the last detection`)) holdDirty = false;
+};
+$('calib').onclick = () => post('/api/calibrate', { countdown: 10, duration: 15 });
+$('reset').onclick = () => {
+  if (confirm('Reset the sensor to factory settings? This clears calibration, hold time and gate size.'))
+    post('/api/factory-reset', {}, 'Sensor reset to factory settings');
+};
+
+function renderCalib() {
+  const ov = $('overlay'), p = calib.phase;
+  ov.classList.toggle('show', ['countdown', 'recording', 'writing'].includes(p));
+  if (p === 'countdown') {
+    $('ov-msg').textContent = 'LEAVE THE ROOM';
+    $('ov-big').textContent = calib.remaining;
+    $('ov-sub').textContent = 'Get out of the sensor’s view. Fans and pets are fine to leave — they become part of the background.';
+  } else if (p === 'recording') {
+    $('ov-msg').textContent = 'RECORDING EMPTY ROOM';
+    $('ov-big').textContent = calib.remaining;
+    $('ov-sub').textContent = `Stay out of view… ${calib.samples || 0} samples`;
+  } else if (p === 'writing') {
+    $('ov-msg').textContent = 'WRITING THRESHOLDS'; $('ov-big').textContent = '…'; $('ov-sub').textContent = '';
+  }
+  const msg = $('calib-msg');
+  if (p === 'done') msg.textContent = `Calibrated from ${calib.samples} empty-room samples ${ago(calib.at)}. Thresholds now sit just above each gate’s background noise.`;
+  else if (p === 'error') msg.textContent = 'Calibration failed: ' + calib.error;
+  else msg.textContent = '';
+  renderConfig();
+}
+const ago = ts => { const s = Math.round(Date.now() / 1000 - ts); return s < 90 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : 'earlier'; };
+
+// ---------- radar drawing ----------
+const cv = $('radar'), ctx = cv.getContext('2d');
+let W = 0, H = 0, ox = 0, oy = 0, R = 0;
+function resize() {
+  const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  W = r.width; H = r.height;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  R = Math.max(50, Math.min(H - 56, (W / 2 - 30) / Math.sin(FOV)));
+  ox = W / 2; oy = Math.min(H - 26, (H + R) / 2 + 12);   // centre the fan vertically when width-bound
+}
+new ResizeObserver(resize).observe(cv);
+
+const UP = -Math.PI / 2, A0 = UP - FOV, A1 = UP + FOV;
+const px = m => m / range() * R;
+const at = (m, ang) => [ox + px(m) * Math.cos(ang), oy + px(m) * Math.sin(ang)];
+
+function sector(r0, r1) {
+  ctx.beginPath();
+  ctx.arc(ox, oy, px(r1), A0, A1);
+  ctx.arc(ox, oy, px(r0), A1, A0, true);
+  ctx.closePath();
+}
+function rgba(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+let sweepAng = UP, sweepDir = 1, lastT = performance.now(), lastGhost = 0;
+const blips = { person: { d: 0, a: 0, weak: false }, mov: { d: 0, a: 0, weak: false }, sta: { d: 0, a: 0, weak: false } };
+const ghosts = [];
+
+function draw(now) {
+  const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
+  const G = gateM(), RANGE = range();
+  ctx.clearRect(0, 0, W, H);
+
+  sector(0, RANGE);
+  const wash = ctx.createRadialGradient(ox, oy, 0, ox, oy, R);
+  wash.addColorStop(0, 'rgba(61,255,138,0.07)'); wash.addColorStop(1, 'rgba(61,255,138,0.015)');
+  ctx.fillStyle = wash; ctx.fill();
+
+  // gate energy heat: brightness = how far above its threshold each gate is.
+  // Gate g is centred on g * G (matches the sensor's reported distances), so it spans ±half a gate.
+  const live = frame && now - lastFrameAt < 2000;
+  if (opts.heat && live && frame.gates_moving) {
+    ctx.globalCompositeOperation = 'lighter';
+    for (let g = 0; g < frame.gates_moving.length; g++) {
+      const r0 = Math.max(0, (g - 0.5) * G), r1 = Math.min((g + 0.5) * G, RANGE);
+      if (r0 >= RANGE) break;
+      const em = (frame.gates_moving[g] ?? 0) / 100, es = g < 2 ? 0 : (frame.gates_static[g] ?? 0) / 100;
+      const tm = (cfg.move_thresh?.[g] ?? 50) / 100, ts = (cfg.static_thresh?.[g] ?? 40) / 100;
+      const hm = em > tm ? 0.18 + 0.3 * (em - tm) / (1 - tm + 1e-6) : em * 0.08;
+      const hs = es > ts ? 0.14 + 0.26 * (es - ts) / (1 - ts + 1e-6) : es * 0.06;
+      if (hm > 0.01) { sector(r0, r1); ctx.fillStyle = rgba(C.mov, hm); ctx.fill(); }
+      if (hs > 0.01) { sector(r0, r1); ctx.fillStyle = rgba(C.sta, hs); ctx.fill(); }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // range rings at gate boundaries
+  ctx.lineWidth = 1; ctx.font = '11px ' + MONO; ctx.textBaseline = 'middle';
+  const step = G * Math.max(1, Math.round(RANGE / G / 12));  // keep rings readable when zoomed out
+  for (let i = 1; i * step <= RANGE + 1e-6; i++) {
+    const m = i * step, major = i % 2 === 0;
+    ctx.strokeStyle = rgba(C.grid, major ? 0.9 : 0.45);
+    ctx.setLineDash(major ? [] : [3, 5]);
+    ctx.beginPath(); ctx.arc(ox, oy, px(m), A0, A1); ctx.stroke();
+    if (major) {
+      const [lx, ly] = at(m, A1);
+      ctx.fillStyle = C.dim; ctx.textAlign = 'left';
+      ctx.fillText(+m.toFixed(2) + ' m', lx + 6, ly);
+    }
+  }
+  ctx.setLineDash([]);
+
+  for (const deg of [-60, -30, 0, 30, 60]) {
+    const a = UP + deg * Math.PI / 180, [x, y] = at(RANGE, a);
+    ctx.strokeStyle = rgba(C.grid, deg === 0 ? 0.7 : 0.4);
+    ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(x, y); ctx.stroke();
+    if (Math.abs(deg) === 60) continue;  // edge spokes would collide with the range labels
+    const [tx, ty] = at(RANGE * 1.06, a);
+    ctx.fillStyle = C.dim; ctx.textAlign = 'center'; ctx.fillText(Math.abs(deg) + '°', tx, ty);
+  }
+
+  if (opts.sweep) {
+    sweepAng += sweepDir * dt * 1.4;
+    if (sweepAng > A1) { sweepAng = A1; sweepDir = -1; }
+    if (sweepAng < A0) { sweepAng = A0; sweepDir = 1; }
+    for (let i = 0; i < 26; i++) {
+      const a = sweepAng - sweepDir * i * 0.012;
+      if (a < A0 || a > A1) break;
+      const [x, y] = at(RANGE, a);
+      ctx.strokeStyle = rgba(C.phos, (1 - i / 26) * (i === 0 ? 0.75 : 0.12));
+      ctx.lineWidth = i === 0 ? 2 : 1.5;
+      ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(x, y); ctx.stroke();
+    }
+    ctx.lineWidth = 1;
+  }
+
+  // the tracked person is the main blip; the sensor's raw readings are an optional faint overlay
+  const e = live ? est : null;
+  const want = { person: e?.person, mov: opts.raw ? e?.moving : null, sta: opts.raw ? e?.stationary : null };
+  const k = 1 - Math.pow(0.002, dt);
+  for (const key of ['person', 'mov', 'sta']) {
+    const b = blips[key], w = want[key];
+    const show = !!w;
+    if (show) {
+      b.d = b.a < 0.05 ? w.distance_m : b.d + (w.distance_m - b.d) * k;
+      b.weak = !w.confident;
+      b.a = Math.min(1, b.a + dt * 4);
+    } else b.a = Math.max(0, b.a - dt * 2.5);
+  }
+
+  if (now - lastGhost > 300) {
+    lastGhost = now;
+    for (const key of ['person', 'mov', 'sta']) if (blips[key].a > 0.5 && !blips[key].weak) ghosts.push({ key, d: blips[key].d, t: now });
+  }
+  while (ghosts.length && now - ghosts[0].t > 4000) ghosts.shift();
+  const colOf = key => key === 'person' ? C.person : key === 'mov' ? C.mov : C.sta;
+  for (const gh of ghosts) {
+    if (gh.d > RANGE) continue;
+    ctx.strokeStyle = rgba(colOf(gh.key), 0.2 * (1 - (now - gh.t) / 4000));
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(ox, oy, px(gh.d), A0, A1); ctx.stroke();
+  }
+
+  const labels = [];
+  for (const key of ['sta', 'mov', 'person']) {
+    const b = blips[key];
+    if (b.a <= 0.01) continue;
+    const col = colOf(key), d = Math.min(b.d, RANGE), r = px(d);
+    const raw = key !== 'person';
+    const a = (b.weak ? 0.45 : 1) * (raw ? 0.6 : 1) * b.a;
+    const pulse = (Math.sin(now / (key === 'sta' ? 420 : 160)) + 1) / 2;
+    ctx.save();
+    if (raw) { ctx.setLineDash(b.weak ? [4, 8] : []); ctx.lineWidth = 1.5; ctx.strokeStyle = rgba(col, a); }
+    else if (b.weak) { ctx.setLineDash([6, 8]); ctx.lineWidth = 3; ctx.strokeStyle = rgba(col, a); }
+    else {
+      ctx.shadowColor = col; ctx.shadowBlur = 18;
+      ctx.strokeStyle = rgba(col, a * (0.55 + 0.35 * pulse));
+      ctx.lineWidth = Math.max(4, Math.min(px(G) * 0.35, 14));
+      ctx.lineCap = 'round';
+    }
+    ctx.beginPath(); ctx.arc(ox, oy, r, A0 + 0.02, A1 - 0.02); ctx.stroke();
+    ctx.restore();
+
+    if (raw) continue;  // raw readings get just the arc
+    const [bx, by] = at(d, UP);
+    ctx.fillStyle = rgba(col, a);
+    ctx.beginPath(); ctx.arc(bx, by, b.weak ? 4 : 6, 0, Math.PI * 2); ctx.fill();
+    if (!b.weak) {
+      const ring = (now % 1400) / 1400;
+      ctx.strokeStyle = rgba(col, a * (1 - ring)); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(bx, by, 6 + ring * 22, 0, Math.PI * 2); ctx.stroke();
+    }
+    labels.push({ col, a, x: bx, y: by, text: `PERSON ${b.d.toFixed(2)} m${arrowOf(want.person)}` + (b.d > RANGE ? ' (beyond range)' : '') });
+  }
+  labels.sort((p, q) => p.y - q.y);
+  let prevY = -Infinity;
+  ctx.font = 'bold 12px ' + MONO; ctx.textAlign = 'left';
+  for (const l of labels) {
+    const y = Math.max(l.y - 16, prevY + 18); prevY = y;
+    const w = ctx.measureText(l.text).width;
+    ctx.fillStyle = rgba(C.bg, 0.75 * l.a); ctx.fillRect(l.x + 12, y - 8, w + 8, 16);
+    ctx.fillStyle = rgba(l.col, l.a); ctx.fillText(l.text, l.x + 16, y);
+  }
+
+  ctx.fillStyle = C.phos; ctx.shadowColor = C.phos; ctx.shadowBlur = 12;
+  ctx.fillRect(ox - 14, oy - 3, 28, 6); ctx.shadowBlur = 0;
+  ctx.fillStyle = C.dim; ctx.textAlign = 'center'; ctx.font = '10px ' + MONO;
+  ctx.fillText('LD2410C', ox, oy + 14);
+
+  drawSpark(now);
+  requestAnimationFrame(draw);
+}
+
+// ---------- 60 s distance history (confident readings only) ----------
+const sp = $('spark'), sctx = sp.getContext('2d');
+function drawSpark(now) {
+  const r = sp.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  if (sp.width !== Math.round(r.width * dpr)) { sp.width = Math.round(r.width * dpr); sp.height = Math.round(r.height * dpr); }
+  const w = r.width, h = r.height, top = fullRange();
+  sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  sctx.clearRect(0, 0, w, h);
+  sctx.strokeStyle = rgba(C.grid, 0.35); sctx.lineWidth = 1;
+  for (let i = 1; i < 4; i++) { const y = h - i / 4 * h; sctx.beginPath(); sctx.moveTo(0, y); sctx.lineTo(w, y); sctx.stroke(); }
+  sctx.strokeStyle = C.person; sctx.lineWidth = 1.8; sctx.beginPath();
+  let pen = false;
+  for (const p of history) {
+    if (p.d == null) { pen = false; continue; }
+    const x = w - (now - p.t) / 60000 * w, y = h - Math.min(p.d, top) / top * h;
+    pen ? sctx.lineTo(x, y) : sctx.moveTo(x, y); pen = true;
+  }
+  sctx.stroke();
+  sctx.fillStyle = C.dim; sctx.font = '10px ' + MONO; sctx.textAlign = 'left'; sctx.textBaseline = 'top';
+  sctx.fillText(+top.toFixed(2) + ' m', 2, 2); sctx.textBaseline = 'bottom'; sctx.fillText('0', 2, h - 1);
+}
+
+setInterval(() => { renderStatus(); if (calib.phase === 'done') renderCalib(); }, 1000);
+connect();
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
