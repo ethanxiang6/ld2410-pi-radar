@@ -26,6 +26,8 @@ touch "$FILE"
 if grep -q "$MARK" "$FILE"; then echo "Kiosk already installed in $FILE"; exit 0; fi
 cat >> "$FILE" <<EOT
 $MARK: wait for the local radar server, then open it full-screen
+# 4K at 30 Hz is too much for a Pi 4's browser; 1080p is smooth (skips if the monitor has no such mode)
+wlr-randr --output \$(wlr-randr | awk 'NR==1{print \$1}') --mode 1920x1080@60 2>/dev/null
 (
   until curl -sf http://localhost:$PORT/api/state >/dev/null; do sleep 1; done
   exec $BROWSER --kiosk --noerrdialogs --disable-infobars --no-first-run \\
