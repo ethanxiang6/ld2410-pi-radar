@@ -12,7 +12,7 @@
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--mono); }
-  body { display: flex; flex-direction: column; min-height: 100vh; }
+  body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
   header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   header h1 { margin: 0; font-size: 14px; letter-spacing: .22em; color: var(--phos); font-weight: 600; }
   .pill { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--dim); }
@@ -36,11 +36,12 @@
   .seg button { border: 0; border-radius: 0; background: transparent; }
   .seg button.on { background: var(--grid); color: var(--text); }
 
-  main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 16px; }
-  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 16px; }
+  main > aside, main > .side { min-height: 0; overflow-y: auto; }
+  @media (max-width: 900px) { body { height: auto; min-height: 100vh; overflow: auto; } main { grid-template-columns: minmax(0, 1fr); } #radar { height: 60vh !important; } }
   .scope { position: relative; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px;
-           background: radial-gradient(ellipse at 50% 100%, #072417 0%, var(--bg) 70%); min-height: 380px; overflow: hidden; }
-  #radar { flex: 1; width: 100%; min-height: 340px; display: block; }
+           background: radial-gradient(ellipse at 50% 100%, #072417 0%, var(--bg) 70%); overflow: hidden; min-height: 0; }
+  #radar { flex: 1 1 0; min-height: 0; width: 100%; height: 0; display: block; }
   .scope-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 8px 14px; font-size: 11px; color: var(--dim); border-top: 1px solid var(--line); }
   .legend { display: flex; gap: 14px; flex-wrap: wrap; }
   .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
@@ -58,7 +59,7 @@
   #presence.on { color: var(--phos); text-shadow: 0 0 14px rgba(61, 255, 138, .45); }
   #presence-sub { font-size: 12px; color: var(--dim); margin-top: 2px; }
   .targets { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .t { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; opacity: .45; transition: opacity .2s; }
+  .t { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; opacity: .45; }
   .t.on { opacity: 1; }
   .t.weak { opacity: .7; border-style: dashed; }
   .t .k { font-size: 10px; letter-spacing: .14em; }
@@ -70,7 +71,7 @@
            background: repeating-linear-gradient(to top, transparent 0 23px, var(--line) 23px 24px); }
   .gate { display: flex; gap: 2px; height: 100%; }
   .bar { flex: 1; position: relative; height: 100%; }
-  .bar i { position: absolute; left: 0; right: 0; bottom: 0; min-height: 1px; border-radius: 2px 2px 0 0; background: var(--mov); transition: height .15s; }
+  .bar i { position: absolute; left: 0; right: 0; bottom: 0; min-height: 1px; border-radius: 2px 2px 0 0; background: var(--mov); }
   .bar.s i { background: var(--sta); }
   .bar b { position: absolute; left: -1px; right: -1px; height: 2px; background: #fff; opacity: .85; box-shadow: 0 0 3px #000; }
   .bar b.off { display: none; }
@@ -106,7 +107,7 @@
       </select>
     </label>
     <label><input type="checkbox" id="heat" checked> gate energy</label>
-    <label title="The sensor's own moving / stationary readings, before tracking"><input type="checkbox" id="raw"> raw readings</label>
+    <label title="The sensor's own moving / stationary detections, before tracking"><input type="checkbox" id="raw"> detected points</label>
     <label><input type="checkbox" id="sweep" checked> sweep</label>
   </div>
 </header>
@@ -118,8 +119,8 @@
     <div class="scope-foot">
       <div class="legend">
         <span><span class="sw" style="background:var(--person)"></span>person (tracked)</span>
-        <span><span class="sw" style="background:var(--mov)"></span>raw moving</span>
-        <span><span class="sw" style="background:var(--sta)"></span>raw stationary</span>
+        <span><span class="sw" style="background:var(--mov)"></span>moving point</span>
+        <span><span class="sw" style="background:var(--sta)"></span>still point</span>
         <span><span class="sw" style="background:transparent;border:1px dashed var(--dim)"></span>coasting / weak</span>
       </div>
       <span>Range only, no bearing: each arc is everyone-at-that-distance across the ±60° field of view.</span>
@@ -191,14 +192,15 @@ const C = { grid: css('--grid'), phos: css('--phos'), dim: css('--dim'), mov: cs
 const MONO = css('--mono');
 const $ = id => document.getElementById(id);
 
-const opts = { range: 'auto', heat: true, raw: false, sweep: true };
-try { Object.assign(opts, JSON.parse(localStorage.getItem('radar-opts') || '{}')); } catch {}
+const opts = { range: 'auto', heat: true, raw: true, sweep: true };
+try { Object.assign(opts, JSON.parse(localStorage.getItem('radar-opts2') || '{}')); } catch {}
+for (const [k, v] of new URLSearchParams(location.search)) if (k in opts) opts[k] = k === 'range' ? v : v !== '0';  // e.g. ?sweep=0&heat=0
 $('range').value = String(opts.range);
 for (const k of ['heat', 'raw', 'sweep']) {
   $(k).checked = opts[k];
   $(k).onchange = e => { opts[k] = e.target.checked; saveOpts(); };
 }
-const saveOpts = () => { try { localStorage.setItem('radar-opts', JSON.stringify(opts)); } catch {} };
+const saveOpts = () => { try { localStorage.setItem('radar-opts2', JSON.stringify(opts)); } catch {} };
 $('range').onchange = e => { opts.range = e.target.value; saveOpts(); };
 
 // ---------- live state ----------
@@ -390,12 +392,12 @@ const ago = ts => { const s = Math.round(Date.now() / 1000 - ts); return s < 90 
 const cv = $('radar'), ctx = cv.getContext('2d');
 let W = 0, H = 0, ox = 0, oy = 0, R = 0;
 function resize() {
-  const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const r = cv.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 1.5);
   W = r.width; H = r.height;
   cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   R = Math.max(50, Math.min(H - 56, (W / 2 - 30) / Math.sin(FOV)));
-  ox = W / 2; oy = Math.min(H - 26, (H + R) / 2 + 12);   // centre the fan vertically when width-bound
+  ox = W / 2; oy = Math.min(H - 26, R + 30);   // top-aligned: fan hugs the top of the scope
 }
 new ResizeObserver(resize).observe(cv);
 
@@ -418,7 +420,9 @@ let sweepAng = UP, sweepDir = 1, lastT = performance.now(), lastGhost = 0;
 const blips = { person: { d: 0, a: 0, weak: false }, mov: { d: 0, a: 0, weak: false }, sta: { d: 0, a: 0, weak: false } };
 const ghosts = [];
 
+const FRAME_MS = 50;  // ~20 fps: the sensor reports ~10 frames/s, so more only burns CPU on a Pi
 function draw(now) {
+  if (now - lastT < FRAME_MS - 2) { requestAnimationFrame(draw); return; }
   const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
   const G = gateM(), RANGE = range();
   ctx.clearRect(0, 0, W, H);
@@ -475,11 +479,11 @@ function draw(now) {
     sweepAng += sweepDir * dt * 1.4;
     if (sweepAng > A1) { sweepAng = A1; sweepDir = -1; }
     if (sweepAng < A0) { sweepAng = A0; sweepDir = 1; }
-    for (let i = 0; i < 26; i++) {
-      const a = sweepAng - sweepDir * i * 0.012;
+    for (let i = 0; i < 12; i++) {
+      const a = sweepAng - sweepDir * i * 0.026;
       if (a < A0 || a > A1) break;
       const [x, y] = at(RANGE, a);
-      ctx.strokeStyle = rgba(C.phos, (1 - i / 26) * (i === 0 ? 0.75 : 0.12));
+      ctx.strokeStyle = rgba(C.phos, (1 - i / 12) * (i === 0 ? 0.75 : 0.14));
       ctx.lineWidth = i === 0 ? 2 : 1.5;
       ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(x, y); ctx.stroke();
     }
@@ -525,16 +529,28 @@ function draw(now) {
     if (raw) { ctx.setLineDash(b.weak ? [4, 8] : []); ctx.lineWidth = 1.5; ctx.strokeStyle = rgba(col, a); }
     else if (b.weak) { ctx.setLineDash([6, 8]); ctx.lineWidth = 3; ctx.strokeStyle = rgba(col, a); }
     else {
-      ctx.shadowColor = col; ctx.shadowBlur = 18;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = rgba(col, a * 0.12);   // cheap glow: a wide faint stroke under the main one
+      ctx.lineWidth = Math.max(10, Math.min(px(G) * 0.35, 14) * 2.4);
+      ctx.beginPath(); ctx.arc(ox, oy, r, A0 + 0.02, A1 - 0.02); ctx.stroke();
       ctx.strokeStyle = rgba(col, a * (0.55 + 0.35 * pulse));
       ctx.lineWidth = Math.max(4, Math.min(px(G) * 0.35, 14));
-      ctx.lineCap = 'round';
     }
     ctx.beginPath(); ctx.arc(ox, oy, r, A0 + 0.02, A1 - 0.02); ctx.stroke();
     ctx.restore();
 
-    if (raw) continue;  // raw readings get just the arc
     const [bx, by] = at(d, UP);
+    if (raw) {  // the sensor's own detection: a point on the centre line (range only, no bearing)
+      const pa = (b.weak ? 0.6 : 1) * b.a;
+      ctx.fillStyle = rgba(col, pa); ctx.strokeStyle = rgba('#ffffff', pa); ctx.lineWidth = 2;
+      ctx.beginPath();
+      if (key === 'mov') { ctx.moveTo(bx, by - 11); ctx.lineTo(bx + 11, by); ctx.lineTo(bx, by + 11); ctx.lineTo(bx - 11, by); ctx.closePath(); }
+      else ctx.rect(bx - 8, by - 8, 16, 16);
+      ctx.stroke(); ctx.fill();
+      const rw = want[key];
+      labels.push({ col, a: Math.max(a, 0.9 * b.a), x: bx, y: by, text: `${key === 'mov' ? 'MOVING' : 'STILL'} ${b.d.toFixed(2)} m` + (rw && rw.energy != null ? ` · e${rw.energy}` : '') });
+      continue;
+    }
     ctx.fillStyle = rgba(col, a);
     ctx.beginPath(); ctx.arc(bx, by, b.weak ? 4 : 6, 0, Math.PI * 2); ctx.fill();
     if (!b.weak) {
@@ -550,12 +566,12 @@ function draw(now) {
   for (const l of labels) {
     const y = Math.max(l.y - 16, prevY + 18); prevY = y;
     const w = ctx.measureText(l.text).width;
-    ctx.fillStyle = rgba(C.bg, 0.75 * l.a); ctx.fillRect(l.x + 12, y - 8, w + 8, 16);
+    ctx.fillStyle = rgba(C.bg, 0.92 * l.a); ctx.fillRect(l.x + 12, y - 8, w + 8, 16);
     ctx.fillStyle = rgba(l.col, l.a); ctx.fillText(l.text, l.x + 16, y);
   }
 
-  ctx.fillStyle = C.phos; ctx.shadowColor = C.phos; ctx.shadowBlur = 12;
-  ctx.fillRect(ox - 14, oy - 3, 28, 6); ctx.shadowBlur = 0;
+  ctx.fillStyle = rgba(C.phos, 0.25); ctx.fillRect(ox - 18, oy - 7, 36, 14);
+  ctx.fillStyle = C.phos; ctx.fillRect(ox - 14, oy - 3, 28, 6);
   ctx.fillStyle = C.dim; ctx.textAlign = 'center'; ctx.font = '10px ' + MONO;
   ctx.fillText('LD2410C', ox, oy + 14);
 
@@ -566,7 +582,7 @@ function draw(now) {
 // ---------- 60 s distance history (confident readings only) ----------
 const sp = $('spark'), sctx = sp.getContext('2d');
 function drawSpark(now) {
-  const r = sp.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const r = sp.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 1.5);
   if (sp.width !== Math.round(r.width * dpr)) { sp.width = Math.round(r.width * dpr); sp.height = Math.round(r.height * dpr); }
   const w = r.width, h = r.height, top = fullRange();
   sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
